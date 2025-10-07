@@ -1,0 +1,12 @@
+[project]
+name = "tick-coach-agent"
+version = "0.1.0"
+description = "Agent for tick-coach"
+authors = [
+    { name = "i-b8o" },
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "setuptools>=80.9.0",
+]

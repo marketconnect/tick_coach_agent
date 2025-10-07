@@ -1,0 +1,9 @@
+yc resource-manager cloud list
+
+yc config set cloud-id ...
+
+yc config set folder-id ...
+
+yc config list
+
+yc serverless function create 
