@@ -45,7 +45,7 @@ export PROXY_URL
 
 ENV_ARGS = "OPENROUTER_API_KEY=$$OPENROUTER_API_KEY,GROQ_API_KEY=$$GROQ_API_KEY,AGENTROUTER_API_KEY=$$AGENTROUTER_API_KEY,LANGSMITH_API_KEY=$$LANGSMITH_API_KEY,OPENROUTER_BASE_URL=$$OPENROUTER_BASE_URL,GROQ_BASE_URL=$$GROQ_BASE_URL,AGENTROUTER_BASE_URL=$$AGENTROUTER_BASE_URL,PROXY_HOST=$$PROXY_HOST,PROXY_PORT=$$PROXY_PORT,PROXY_USER=$$PROXY_USER,PROXY_PASS=$$PROXY_PASS,PROXY_URL=$$PROXY_URL"
 
-deploy: build-zip
+deploy-yc: build-zip
 	yc serverless function version create \
 	  --function-name $(FUNC) \
 	  --runtime $(RUNTIME) \
@@ -59,3 +59,7 @@ deploy: build-zip
 
 clean:
 	rm -f $(ZIP) func_ver.json
+
+deploy:
+	deploy-yc
+	clean

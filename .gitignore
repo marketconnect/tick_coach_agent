@@ -10,3 +10,4 @@ wheels/
 .venv
 Makefile
 .env
+func_ver.json
