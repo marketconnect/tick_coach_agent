@@ -7,3 +7,5 @@ yc config set folder-id ...
 yc config list
 
 yc serverless function create 
+
+yc serverless function runtime list

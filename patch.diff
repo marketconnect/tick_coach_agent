@@ -1,0 +1,44 @@
+-            full_response_content = ""
+-            for chunk in agent.stream({"messages": [{"role": "user", "content": user_prompt}]}):
+-                if messages_chunk := chunk.get("messages"):
+-                    ai_message = messages_chunk[-1]
+-                    if new_content := ai_message.content[len(full_response_content):]:
+-                        yield new_content
+-                        full_response_content = ai_message.content
+-            
+-            print(f"--- Успешный ответ от модели: {model.model_name} ---")
+-            return
++            # Пытаемся стримить; если не пришло ничего — делаем invoke.
++            produced_any = False
++            full_response_content = ""
++            for chunk in agent.stream({"messages": [{"role": "user", "content": user_prompt}]}):
++                messages_chunk = chunk.get("messages")
++                if not messages_chunk:
++                    continue
++                # берём последнюю AI-реплику
++                ai_message = messages_chunk[-1]
++                content = getattr(ai_message, "content", None)
++                if content is None and isinstance(ai_message, dict):
++                    content = ai_message.get("content")
++                if not isinstance(content, str):
++                    continue
++                new_content = content[len(full_response_content):]
++                if new_content:
++                    produced_any = True
++                    yield new_content
++                    full_response_content = content
++
++            if not produced_any:
++                # Фолбэк: синхронный вызов, если стрим не дал данных
++                result = agent.invoke({"messages": [{"role": "user", "content": user_prompt}]})
++                msgs = result.get("messages") if isinstance(result, dict) else None
++                if msgs:
++                    last = msgs[-1]
++                    text = getattr(last, "content", None)
++                    if text is None and isinstance(last, dict):
++                        text = last.get("content", "")
++                    if text:
++                        yield text
++
++            print(f"--- Успешный ответ от модели: {model.model_name} ---")
++            return
