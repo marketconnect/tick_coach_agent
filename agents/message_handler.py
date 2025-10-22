@@ -5,13 +5,15 @@ import httpx
 from deepagents import create_deep_agent
 from langchain_openai import ChatOpenAI
 from openai import APIStatusError
+import os
+os.environ["OPENAI_USE_CHAT_COMPLETIONS_API"] = "true"
+from langchain_openai import ChatOpenAI
 
 proxy_url = os.getenv("PROXY_URL") or ""
 timeout = httpx.Timeout(120.0, connect=10.0, read=120.0, write=120.0)
 http_client = httpx.Client(timeout=timeout, proxy=proxy_url) if proxy_url else httpx.Client(timeout=timeout)
 
 research_instructions = """You are an expert researcher. Your job is to conduct thorough research, and then write a polished report."""
-
 
 model_glm_4_5 = ChatOpenAI(
   api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -26,17 +28,15 @@ model_glm_4_5 = ChatOpenAI(
 
 
 model_gpt_5 = ChatOpenAI(
-    api_key=os.getenv("AGENTROUTER_API_KEY"),
-    base_url=os.getenv("AGENTROUTER_BASE_URL") or "https://agentrouter.org/v1",
     model="gpt-5",
+    base_url="https://agentrouter.org/v1",
+    openai_api_key=os.getenv("AGENTROUTER_API_KEY"),
     default_headers={
         "HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
         "X-Title": "Roo Code",
         "User-Agent": "RooCode/1.0.0",
     },
-    http_client=http_client,
 )
-
 models = [model_gpt_5, model_glm_4_5]
 
 def process_user_message(user_prompt: str) -> Generator[str, None, None]:
