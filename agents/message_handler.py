@@ -10,11 +10,11 @@ from langchain_openai import ChatOpenAI
 from openai import APIStatusError, APIConnectionError
 from langgraph.graph import StateGraph, END
 from langgraph.errors import GraphRecursionError
+import xmlschema
 
 
 
-from .tools import ask_clarifying_questions
-from .prompts import RESEARCH_INSTRUCTIONS
+from .prompts import RESEARCH_INSTRUCTIONS, GOAL_CLARIFIER_SUBAGENT_DESCRIPTION, GOAL_CLARIFIER_SUBAGENT
 from .ydb_checkpointer import YDBCheckpointer
 
 log = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ class AgentState(TypedDict):
     messages: Annotated[List[AnyMessage], add]
 
 # Tools
-tools = [ask_clarifying_questions]
-tool_map = {tool.name: tool for tool in tools}
+tools = []
+tool_map = {}
 
 proxy_url = os.getenv("PROXY_URL") or ""
 timeout = httpx.Timeout(120.0, connect=10.0, read=120.0, write=120.0)
@@ -42,6 +42,15 @@ http_client_no_proxy = httpx.Client(timeout=timeout)
 http_client = http_client_proxy or http_client_no_proxy
 
 research_instructions = RESEARCH_INSTRUCTIONS
+
+# Load XSD schema for Form validation
+FORM_XSD_PATH = os.path.join(os.path.dirname(__file__), "..", "xmls", "Form.xml")
+try:
+    form_schema = xmlschema.XMLSchema(FORM_XSD_PATH)
+    log.warning(f"Loaded XML Schema from {FORM_XSD_PATH} for validation.")
+except Exception as e:
+    log.warning(f"Failed to load XML Schema from {FORM_XSD_PATH}: {e}. XML validation disabled.")
+    form_schema = None
 
 # DO NOT CHANGE THE ORDER AND STRUCTURE OF THESE MODELS
 model_glm_4_5 = ChatOpenAI(
@@ -103,11 +112,48 @@ def rebuild_model_without_proxy(model: ChatOpenAI) -> ChatOpenAI:
 
 checkpointer = YDBCheckpointer()
 
+def validate_form_xml(xml_str: str) -> bool:
+    """Validate clarifier XML against xmls/Form.xml XSD."""
+    if form_schema is None:
+        # If schema failed to load, skip strict validation to avoid blocking flow
+        return True
+    try:
+        return form_schema.is_valid(xml_str)
+    except Exception as e:
+        log.warning(f"XML validation error: {e}")
+        return False
+
+def get_last_task_xml(messages: List[AnyMessage]) -> str | None:
+    """Extract the most recent XML-looking payload from any ToolMessage (e.g., subagent `task`)."""
+    for msg in reversed(messages):
+        try:
+            if isinstance(msg, ToolMessage):
+                content = msg.content
+                if isinstance(content, str) and content.lstrip().startswith("<"):
+                    return content
+        except Exception:
+            continue
+    return None
+
 # Graph nodes
 def agent_node(state: AgentState, agent):
     result = agent.invoke(state)
-    # We only want to add the new message to the state
-    return {"messages": [result["messages"][-1]]}
+    # Prefer surfacing subagent (task) XML ToolMessage to the outer graph if present
+    msgs = result["messages"]
+    xml_tool_msg = None
+    for m in reversed(msgs):
+        try:
+            if isinstance(m, ToolMessage):
+                c = m.content
+                if isinstance(c, str) and c.lstrip().startswith("<"):
+                    xml_tool_msg = m
+                    break
+        except Exception:
+            continue
+    if xml_tool_msg:
+        return {"messages": [xml_tool_msg]}
+    # Fallback to the last AI message
+    return {"messages": [msgs[-1]]}
 
 def tool_node(state: AgentState):
     last_message = state["messages"][-1]
@@ -115,16 +161,18 @@ def tool_node(state: AgentState):
         return END
 
     tool_calls = last_message.tool_calls
-    
-    for tool_call in tool_calls:
-        if tool_call["name"] == "ask_clarifying_questions":
-            raise ClarificationInterrupt(tool_call["args"]["questions"])
 
+    # Execute only known local tools; ignore others (handled internally by deep agent)
     tool_outputs = []
     for tool_call in tool_calls:
-        tool_output = tool_map[tool_call["name"]].invoke(tool_call["args"])
+        name = tool_call["name"]
+        if name not in tool_map:
+            continue
+        tool_output = tool_map[name].invoke(tool_call["args"])
         tool_outputs.append(ToolMessage(content=str(tool_output), tool_call_id=tool_call["id"]))
-    
+
+    if not tool_outputs:
+        return END
     return {"messages": tool_outputs}
 
 # Conditional edge
@@ -136,12 +184,22 @@ def should_continue(state: AgentState):
 
 # Build graph
 def build_graph(model):
+    # Configure the goal clarifier as a SubAgent
+    subagents = [
+        {
+            "name": "ask_clarifying_questions",
+            "description": GOAL_CLARIFIER_SUBAGENT_DESCRIPTION,
+            "system_prompt": GOAL_CLARIFIER_SUBAGENT,
+        }
+    ]
+
     agent = create_deep_agent(
         model=model,
         system_prompt=research_instructions,
         tools=tools,
+        subagents=subagents,
     )
-    
+
     graph = StateGraph(AgentState)
     graph.add_node("agent", lambda state: agent_node(state, agent))
     graph.add_node("tools", tool_node)
@@ -152,7 +210,7 @@ def build_graph(model):
         {"tools": "tools", END: END}
     )
     graph.add_edge("tools", "agent")
-    
+
     return graph.compile(checkpointer=checkpointer)
 
 def process_user_message(client_id: str, user_prompt: str) -> dict:
@@ -169,8 +227,30 @@ def process_user_message(client_id: str, user_prompt: str) -> dict:
         try:
             graph = build_graph(model)
             final_state = graph.invoke(graph_input, thread_config)
-            last_message = final_state["messages"][-1]
-            
+            messages = final_state["messages"]
+            xml_payload = get_last_task_xml(messages)
+            if xml_payload:
+                is_valid = validate_form_xml(xml_payload)
+                if is_valid:
+                    return {
+                        "type": "clarifying_question",
+                        "payload": xml_payload
+                    }
+                # Validation failed: request agent/subagent to regenerate valid XML (do not send invalid to user)
+                fix_instruction = "XML из подагента ask_clarifying_questions не соответствует схеме Form.xml. Пересоздай валидный XML строго по схеме и выведи только XML."
+                retry_state = graph.invoke({"messages": [HumanMessage(content=fix_instruction)]}, thread_config)
+                retry_messages = retry_state["messages"]
+                retry_xml = get_last_task_xml(retry_messages)
+                if retry_xml and validate_form_xml(retry_xml):
+                    return {
+                        "type": "clarifying_question",
+                        "payload": retry_xml
+                    }
+                return {
+                    "type": "error",
+                    "payload": "XML из подагента ask_clarifying_questions не валиден по схеме Form.xml. Попробуйте снова."
+                }
+            last_message = messages[-1]
             return {
                 "type": "final_answer",
                 "payload": last_message.content
@@ -195,7 +275,29 @@ def process_user_message(client_id: str, user_prompt: str) -> dict:
                 model_no_proxy = rebuild_model_without_proxy(model)
                 graph = build_graph(model_no_proxy)
                 final_state = graph.invoke(graph_input, thread_config)
-                last_message = final_state["messages"][-1]
+                messages = final_state["messages"]
+                xml_payload = get_last_task_xml(messages)
+                if xml_payload:
+                    is_valid = validate_form_xml(xml_payload)
+                    if is_valid:
+                        return {
+                            "type": "clarifying_question",
+                            "payload": xml_payload
+                        }
+                    fix_instruction = "XML из подагента ask_clarifying_questions не соответствует схеме Form.xml. Пересоздай валидный XML строго по схеме и выведи только XML."
+                    retry_state = graph.invoke({"messages": [HumanMessage(content=fix_instruction)]}, thread_config)
+                    retry_messages = retry_state["messages"]
+                    retry_xml = get_last_task_xml(retry_messages)
+                    if retry_xml and validate_form_xml(retry_xml):
+                        return {
+                            "type": "clarifying_question",
+                            "payload": retry_xml
+                        }
+                    return {
+                        "type": "error",
+                        "payload": "XML из подагента ask_clarifying_questions не валиден по схеме Form.xml. Попробуйте снова."
+                    }
+                last_message = messages[-1]
                 return {
                     "type": "final_answer",
                     "payload": last_message.content

@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            elementFormDefault="unqualified"
+            attributeFormDefault="unqualified">
+
+  <!-- ========= Root ========= -->
+  <xsd:element name="Form" type="FormType"/>
+
+  <!-- ========= Core Types ========= -->
+  <xsd:complexType name="FormType">
+    <xsd:sequence>
+      <xsd:element name="Section" type="SectionType" minOccurs="1" maxOccurs="unbounded"/>
+      <xsd:element name="Logic" type="LogicType" minOccurs="0"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="SectionType">
+    <xsd:sequence>
+      <xsd:element name="Title" type="NonEmptyString" minOccurs="0"/>
+      <xsd:element name="Section" type="SectionType" minOccurs="0" maxOccurs="unbounded"/>
+      <xsd:element name="Field" type="FieldType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="id" type="xsd:ID" use="optional"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="FieldType">
+    <xsd:sequence>
+      <!-- Human-facing prompt text -->
+      <xsd:element name="Label" type="NonEmptyString"/>
+      <xsd:element name="Help" type="xsd:string" minOccurs="0"/>
+
+      <!-- Control kind (exactly one) -->
+      <xsd:choice>
+        <xsd:element name="Select" type="SelectConfigType"/>
+        <xsd:element name="Number" type="NumberConfigType"/>
+        <xsd:element name="Text" type="TextConfigType"/>
+        <xsd:element name="Textarea" type="TextareaConfigType"/>
+        <xsd:element name="Checkbox" type="CheckboxConfigType"/>
+        <xsd:element name="Date" type="DateConfigType"/>
+        <xsd:element name="Auto" type="AutoConfigType"/>
+        <xsd:element name="Group" type="GroupConfigType"/>
+      </xsd:choice>
+
+      <!-- Optional behavior -->
+      <xsd:element name="Validation" type="ValidationType" minOccurs="0"/>
+      <xsd:element name="Visibility" type="VisibilityType" minOccurs="0"/>
+      <xsd:element name="Formula" type="FormulaType" minOccurs="0"/>
+    </xsd:sequence>
+    <xsd:attribute name="id" type="xsd:ID" use="required"/>
+    <xsd:attribute name="required" type="xsd:boolean" use="optional" default="false"/>
+    <xsd:attribute name="readonly" type="xsd:boolean" use="optional" default="false"/>
+  </xsd:complexType>
+
+  <!-- ========= Control Configs ========= -->
+  <xsd:complexType name="SelectConfigType">
+    <xsd:sequence>
+      <xsd:element name="Options" type="OptionsType" minOccurs="0"/>
+    </xsd:sequence>
+    <xsd:attribute name="multiselect" type="xsd:boolean" use="optional" default="false"/>
+    <xsd:attribute name="minSelections" type="NonNegativeInt" use="optional"/>
+    <xsd:attribute name="maxSelections" type="NonNegativeInt" use="optional"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="NumberConfigType">
+    <xsd:attribute name="integer" type="xsd:boolean" use="optional" default="false"/>
+    <xsd:attribute name="min" type="xsd:decimal" use="optional"/>
+    <xsd:attribute name="max" type="xsd:decimal" use="optional"/>
+    <xsd:attribute name="step" type="xsd:decimal" use="optional"/>
+    <xsd:attribute name="unit" type="xsd:string" use="optional"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="TextConfigType">
+    <xsd:attribute name="minLength" type="NonNegativeInt" use="optional"/>
+    <xsd:attribute name="maxLength" type="NonNegativeInt" use="optional"/>
+    <xsd:attribute name="pattern" type="xsd:string" use="optional"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="TextareaConfigType">
+    <xsd:attribute name="rows" type="NonNegativeInt" use="optional"/>
+    <xsd:attribute name="maxLength" type="NonNegativeInt" use="optional"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="CheckboxConfigType">
+    <xsd:sequence/>
+  </xsd:complexType>
+
+  <xsd:complexType name="DateConfigType">
+    <xsd:attribute name="minDate" type="xsd:date" use="optional"/>
+    <xsd:attribute name="maxDate" type="xsd:date" use="optional"/>
+    <xsd:attribute name="mode" type="DateModeEnum" use="optional" default="date"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="AutoConfigType">
+    <xsd:sequence/>
+  </xsd:complexType>
+
+  <xsd:complexType name="GroupConfigType">
+    <xsd:sequence>
+      <xsd:element name="Field" type="FieldType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="layout" type="GroupLayoutEnum" use="optional" default="stack"/>
+  </xsd:complexType>
+
+  <!-- ========= Options ========= -->
+  <xsd:complexType name="OptionsType">
+    <xsd:sequence>
+      <xsd:element name="Option" type="OptionType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="allowCustom" type="xsd:boolean" use="optional" default="false"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="OptionType">
+    <xsd:attribute name="value" type="NonEmptyString" use="required"/>
+    <xsd:attribute name="label" type="NonEmptyString" use="required"/>
+  </xsd:complexType>
+
+  <!-- ========= Validation ========= -->
+  <xsd:complexType name="ValidationType">
+    <xsd:sequence>
+      <xsd:element name="Rule" type="ValidationRuleType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="ValidationRuleType">
+    <xsd:sequence>
+      <xsd:element name="Param" type="KVParamType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="type" type="ValidationRuleEnum" use="required"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="KVParamType">
+    <xsd:attribute name="name" type="NonEmptyString" use="required"/>
+    <xsd:attribute name="value" type="xsd:string" use="required"/>
+  </xsd:complexType>
+
+  <xsd:simpleType name="ValidationRuleEnum">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="min"/>
+      <xsd:enumeration value="max"/>
+      <xsd:enumeration value="integerOnly"/>
+      <xsd:enumeration value="min_length"/>
+      <xsd:enumeration value="max_length"/>
+      <xsd:enumeration value="pattern"/>
+      <xsd:enumeration value="not_before"/>
+      <xsd:enumeration value="not_after"/>
+      <xsd:enumeration value="future_or_today"/>
+      <xsd:enumeration value="past_or_today"/>
+      <xsd:enumeration value="min_selections"/>
+      <xsd:enumeration value="max_selections"/>
+      <xsd:enumeration value="selection_conflict_excludes"/>
+      <xsd:enumeration value="custom"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <!-- ========= Visibility / Conditions ========= -->
+  <xsd:complexType name="VisibilityType">
+    <xsd:sequence>
+      <xsd:element name="Rule" type="VisibilityRuleType" minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="VisibilityRuleType">
+    <xsd:sequence>
+      <xsd:element name="Condition" type="ConditionType" minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="any" type="xsd:boolean" use="optional" default="true"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="ConditionType">
+    <xsd:attribute name="ref" type="xsd:IDREF" use="required"/>
+    <xsd:attribute name="op" type="ConditionOpEnum" use="required"/>
+    <xsd:attribute name="value" type="xsd:string" use="optional"/>
+  </xsd:complexType>
+
+  <xsd:simpleType name="ConditionOpEnum">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="equals"/>
+      <xsd:enumeration value="not_equals"/>
+      <xsd:enumeration value="in"/>
+      <xsd:enumeration value="not_in"/>
+      <xsd:enumeration value="includes"/>
+      <xsd:enumeration value="excludes"/>
+      <xsd:enumeration value="greater"/>
+      <xsd:enumeration value="greater_or_equal"/>
+      <xsd:enumeration value="less"/>
+      <xsd:enumeration value="less_or_equal"/>
+      <xsd:enumeration value="exists"/>
+      <xsd:enumeration value="empty"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <!-- ========= Formula ========= -->
+  <xsd:complexType name="FormulaType">
+    <xsd:sequence>
+      <xsd:element name="Code" type="xsd:string"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <!-- ========= Submission Logic ========= -->
+  <xsd:complexType name="LogicType">
+    <xsd:sequence>
+      <xsd:element name="SubmissionRules" type="SubmissionRulesType" minOccurs="0"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="SubmissionRulesType">
+    <xsd:sequence>
+      <xsd:element name="Rule" type="SubmitRuleType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="SubmitRuleType">
+    <xsd:sequence>
+      <xsd:element name="When" type="WhenType"/>
+      <xsd:choice>
+        <xsd:element name="Require" type="AffectFieldsType"/>
+        <xsd:element name="Suggest" type="AffectFieldsType"/>
+        <xsd:element name="Disable" type="AffectFieldsType"/>
+      </xsd:choice>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="WhenType">
+    <xsd:sequence>
+      <xsd:element name="Condition" type="ConditionType" minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="any" type="xsd:boolean" use="optional" default="false"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="AffectFieldsType">
+    <xsd:attribute name="fields" type="xsd:IDREFS" use="required"/>
+  </xsd:complexType>
+
+  <!-- ========= Simple Types ========= -->
+  <xsd:simpleType name="DateModeEnum">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="date"/>
+      <xsd:enumeration value="datetime"/>
+      <xsd:enumeration value="month"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="GroupLayoutEnum">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="stack"/>
+      <xsd:enumeration value="grid"/>
+      <xsd:enumeration value="inline"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="NonNegativeInt">
+    <xsd:restriction base="xsd:nonNegativeInteger"/>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="NonEmptyString">
+    <xsd:restriction base="xsd:string">
+      <xsd:minLength value="1"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+</xsd:schema>

@@ -1,0 +1,616 @@
+<!-- 
+Элементы, существующие только в XML
+
+Следующие элементы из XML-схемы не имеют прямых аналогов в структуре базы данных приложения:
+
+    <Transition>: Элемент для описания перехода между упражнениями (например, смена станции). В приложении такая сущность отсутствует.
+
+    <Repetition> / <Hold>: В XML это полноценные элементы со своими атрибутами и вложенными тегами (<Phase>, <Breathing>). В БД их структура представлена в виде JSON-строки.
+
+    resistance_level: Атрибут в <Exercise> для описания нагрузки, не измеряемой в килограммах (например, уровень на тренажере). В модели данных приложения его нет.
+ -->
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+            elementFormDefault="unqualified"
+            attributeFormDefault="unqualified">
+
+    
+    <xsd:element name="TrainingSession" type="TrainingSessionType">
+        <xsd:unique name="uniqueSetIds">
+            <xsd:selector xpath="descendant::Set"/>
+            <xsd:field xpath="@id"/>
+        </xsd:unique>
+        <xsd:unique name="uniqueExerciseIds">
+            <xsd:selector xpath="descendant::Exercise"/>
+            <xsd:field xpath="@id"/>
+        </xsd:unique>
+    </xsd:element>
+
+
+    
+    <xsd:complexType name="TrainingSessionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Единица тренировочного процесса. Содержит только компоненты (без целей/метрик).
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:sequence>
+            <xsd:element name="Block" type="BlockType" minOccurs="1" maxOccurs="unbounded"/>
+        </xsd:sequence>
+        <xsd:attribute name="id" type="xsd:ID" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>Уникальный идентификатор всей сессии (XML ID, уникален в документе).</xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="name" type="NonEmptyString" use="required">
+            <xsd:annotation>
+                <xsd:documentation>Человекочитаемое имя/заголовок тренировки (обязательно).</xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="version" type="xsd:string" use="optional" fixed="1.0">
+            <xsd:annotation>
+                <xsd:documentation>Версия формата описания сессии. Зафиксировано как 1.0.</xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+    </xsd:complexType>
+
+    <xsd:complexType name="BlockType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Блок — логическая часть тренировки (разминка, основная часть, заминка, мобилити и т.п.).
+                Содержит набор сетов (Set).
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:sequence>
+            <xsd:element name="Set" type="SetType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Сет (Set) — совокупность упражнений и пауз, объединённых в одну серию или раунд.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+        </xsd:sequence>
+
+        <xsd:attribute name="type" type="NonEmptyString" use="required">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Функциональная категория блока.
+                    Примеры: "Мобилити", "Conditioning", "Кардио", "Power", "Йога" и т.д.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+
+        <xsd:attribute name="order" type="NonNegativeInt" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Порядковый номер блока внутри тренировки (0, 1, 2, …).
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="label" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Произвольная метка или название блока для удобства идентификации.  
+                    Например: "Нижняя часть тела", "Техника ударов", "Финишер".
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+
+    <xsd:complexType name="SetType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Набор (сет, раунд, серия) — структурная единица тренировки.
+                Содержит последовательность упражнений, пауз и переходов,
+                а также команду повторения всего сета.
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:sequence>
+            <xsd:annotation>
+                <xsd:documentation>
+                    Последовательность элементов внутри сета:
+                    упражнения, их микроструктура, паузы и переходы.
+                </xsd:documentation>
+            </xsd:annotation>
+
+            <xsd:choice minOccurs="0" maxOccurs="unbounded">
+                <xsd:element name="Exercise" type="ExerciseType">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Упражнение — конкретное движение или поза.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:element>
+
+                <xsd:element name="Rest" type="RestType">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Пауза между упражнениями.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:element>
+
+                <xsd:element name="Transition" type="TransitionType">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Служебный переход или перестроение между действиями
+                            (смена станции, коврика, стойки и т.п.).
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:element>
+            </xsd:choice>
+
+            <xsd:element name="Repeat" type="RepeatType" minOccurs="0" maxOccurs="1">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Команда повторить весь Set целиком N раз.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+    
+         </xsd:sequence>
+
+         <xsd:attribute name="id" type="xsd:ID" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Уникальный идентификатор сета.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="order" type="NonNegativeInt" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Порядковый номер (0, 1, 2, …).
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="label" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Человекочитаемая метка или название сета.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+
+    <xsd:complexType name="ExerciseType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Упражнение как контейнер движений.
+                Содержит последовательность повторений (Repetition) или удержаний (Hold),
+                а также периоды отдыха (Rest) между ними.
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:sequence>
+            <xsd:choice minOccurs="0" maxOccurs="unbounded">
+                <xsd:element name="Repetition" type="RepetitionType">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Повторение (реп) — одно полное выполнение движения.
+                            Применяется для динамических действий (жим, присед, удар).
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:element>
+
+                <xsd:element name="Hold" type="HoldType">
+                    <xsd:annotation>
+                        <xsd:documentation>
+                            Статическое удержание позы (йога, изометрия, планка).
+                            Используется, когда движение не циклично.
+                        </xsd:documentation>
+                    </xsd:annotation>
+                </xsd:element>
+            </xsd:choice>
+
+            <xsd:element name="Rest" type="RestType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Внутренние паузы между повторениями при необходимости.
+                        Используются для краткого восстановления внутри упражнения.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+        </xsd:sequence>
+
+        <xsd:attribute name="id" type="xsd:ID" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Уникальный идентификатор упражнения в рамках всей тренировки.
+                    Пример: ex-001.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="name" type="NonEmptyString" use="required">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Название упражнения (непустая строка).
+                    Пример: "Присед со штангой".
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="modality" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Тип моторной активности. Определяет «род» упражнения:
+                    "сила", "гибкость", "йога", "кардио", "координация", "боевые" и т.п.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="equipment" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Средство или предмет, задействованный в упражнении.
+                    Любой внешний объект: "штанга", "гантели", "резина", "коврик", "вес собственного тела".
+                    Если упражнение без предмета, атрибут можно опустить.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="load_kg" type="NonNegativeDecimal" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Физическая нагрузка в килограммах (вес, сопротивление, масса).
+                    Количественная характеристика механической работы.
+                    Используется для силовых, функциональных и боевых систем.
+                    Может быть нулевой (вес тела) или любой положительный decimal.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="resistance_level" type="NonNegativeDecimal" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Обобщённый уровень сопротивления или усилия (если нагрузка не выражается в кг).
+                    Используется, когда load_kg неприменим:
+                    — тренажёры, эспандеры, беговая дорожка, вода, эластика.
+                    Мера относительная: 0-10, либо в процентах от максимума.
+                    Позволяет описывать "ощущаемую нагрузку".
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="tempo" type="TempoPattern" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Темпо — временной паттерн выполнения движения в формате "a-b-c".
+                    Пример: "3-1-1" — 3 сек опускание, 1 сек пауза, 1 сек подъём.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+    <xsd:complexType name="RepetitionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Повторение с фазами (движение по циклу): одно завершённое выполнение упражнения.
+                Может включать набор фаз и (опционально) дыхательный паттерн.
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:sequence>
+            <xsd:element name="Phase" type="PhaseType" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Фаза одного повтора: эксцентрическая, изометрическая, концентрическая или переходная.
+                        Количество фаз не ограничено (0..*), порядок отражает реальную кинематику.
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="Breathing" type="BreathingType" minOccurs="0" maxOccurs="1">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Дыхание, синхронизированное с фазами повтора. Поддерживает события (inhale_on/exhale_on)
+                        и компактный числовой паттерн (атрибут pattern типа BreathingPattern), напр. 4-4-6.
+                        Не более одного блока дыхания на повтор (0..1).
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+        </xsd:sequence>
+        <xsd:attribute name="index" type="PositiveInt" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Порядковый номер повтора в рамках упражнения/сета, начиная с 1.
+                    Используется для адресации и логирования.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="rangeOfMotion" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Диапазон движения (ROM): «полный», «половинный», «частичный» или произвольное текстовое описание амплитуды.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+    <xsd:complexType name="HoldType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Удержание статической позы/стойки (изометрическая работа). Для асан, планок и т.п.
+                Может включать дыхательный паттерн.
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:all>
+            <xsd:element name="Breathing" type="BreathingType" minOccurs="0" maxOccurs="1">
+                <xsd:annotation>
+                    <xsd:documentation>
+                        Опциональный блок дыхания во время удержания. Поддерживает компактный паттерн (напр. 4-4-6).
+                    </xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+        </xsd:all>
+
+        <xsd:attribute name="duration_sec" type="NonNegativeInt" use="required">
+            <xsd:annotation>
+                <xsd:documentation>Длительность удержания в целых секундах (≥ 0). Обязательный атрибут.</xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="position" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>Название/вариант позиции, напр.: "на предплечьях", "Собака мордой вниз".</xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+    <xsd:complexType name="PhaseType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Фаза одного повтора (эксцентрическая/изометрическая/концентрическая/переход).
+                Описывает участок движения внутри Repetition, может иметь длительность и методическую подсказку.
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:attribute name="name" use="required">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Тип фазы. Требуется указать одно из допустимых значений: эксцентрическая, изометрическая,
+                    концентрическая или переход.
+                </xsd:documentation>
+            </xsd:annotation>
+            <xsd:simpleType>
+                <xsd:restriction base="xsd:string">
+                    <xsd:enumeration value="эксцентрическая">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Удлинение мышц под нагрузкой (опускание/негативная фаза).
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:enumeration>
+                    <xsd:enumeration value="изометрическая">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Удержание без изменения длины мышц (пауза/статическая фиксация).
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:enumeration>
+                    <xsd:enumeration value="концентрическая">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Укорочение мышц (подъём/позитивная фаза).
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:enumeration>
+                    <xsd:enumeration value="переход">
+                        <xsd:annotation>
+                            <xsd:documentation>
+                                Связующее микродвижение/переключение между фазами (без приоритета нагрузки).
+                            </xsd:documentation>
+                        </xsd:annotation>
+                    </xsd:enumeration>
+                </xsd:restriction>
+            </xsd:simpleType>
+        </xsd:attribute>
+
+        <xsd:attribute name="duration_sec" type="NonNegativeInt" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Длительность фазы в целых секундах. Если опущено — выводится из темпо/тайминга.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="cue" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Методическая подсказка/указание на технику для данной фазы (например: "колени наружу",
+                    "нейтральная спина", "сохранять напряжение корпуса").
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+
+
+    <xsd:complexType name="BreathingType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Модель дыхания во время упражнения/удержания. Можно указать события (на какой фазе вдох/выдох)
+                и/или компактный числовой паттерн (например, 4-4-6 или 4-4-6-4).
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:attribute name="inhale_on" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Текстовая метка фазы/события, на которой выполняется вдох (например: "эксцентрическая", "вход в позу").
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="exhale_on" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Текстовая метка фазы/события, на которой выполняется выдох (например: "концентрическая", "выход из позы").
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="pattern" type="BreathingPattern" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Компактная запись дыхательного цикла: три или четыре целых числа, разделённых дефисами.
+                    Примеры: "4-4-6" (вдох-задержка-выдох), "4-4-6-4" (добавлена задержка после выдоха).
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+    <xsd:simpleType name="BreathingPattern">
+        <xsd:annotation>
+            <xsd:documentation>
+                Шаблон дыхания: три или четыре неотрицательных целых числа, разделённые дефисами.
+                Примеры: "4-4-6" или "4-4-6-4".
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <!-- Разрешены "a-b-c" или "a-b-c-d" -->
+            <xsd:pattern value="[0-9]+-[0-9]+-[0-9]+(-[0-9]+)?"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:complexType name="RestType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Пауза (отдых) как компонент тренировочного процесса.
+                Длительность задаётся в целых секундах для человекоцентричного тайминга.
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:attribute name="seconds" type="NonNegativeInt" use="required">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Продолжительность отдыха в секундах (целое неотрицательное число: 30, 45, 60 и т.п.).
+                    Обязательный атрибут.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="reason" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Необязательное текстовое пояснение причины отдыха (например: "между подходами", "между раундами").
+                    Удобно для логирования и анализа структуры тренировки.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+
+    <xsd:complexType name="TransitionType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Переход между элементами (перестроение/смена станции/смена позиции).
+                Используется для моделирования технических перемещений без целевой нагрузки.
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:attribute name="duration_sec" type="NonNegativeInt" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Длительность перехода в секундах (целое неотрицательное число). Необязательно, если переход кратковременный
+                    и не требует отдельного тайминга.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="note" type="xsd:string" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Необязательное пояснение к переходу (например: "перейти к гребному эргометру", "смена коврика → станция 3").
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+  
+    <xsd:complexType name="RepeatType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Повторение сета/раунда без дублирования его содержимого.
+                Позволяет указать, сколько раз выполнить текущий Set, а также (опционально)
+                соотношение работы и отдыха на один раунд.
+            </xsd:documentation>
+        </xsd:annotation>
+
+        <xsd:attribute name="rounds" type="PositiveInt" use="required">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Количество повторов (раундов) текущего сета. Целое положительное число: 1, 2, 3, ...
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+  
+        <xsd:attribute name="work_to_rest_ratio" type="WorkRestRatioPattern" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Соотношение «работа:отдых» для одного раунда (единицы одинаковые — обычно секунды).
+                    Пример: "60:60", "40:20", "90:30".
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+  <!-- =========================
+       Простые типы
+       ========================= -->
+    <xsd:simpleType name="WorkRestRatioPattern">
+        <xsd:annotation>
+            <xsd:documentation>
+                Паттерн соотношения работы к отдыху: два целых неотрицательных числа, разделённые двоеточием.
+                Примеры: "60:60", "40:20", "90:30".
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:pattern value="[0-9]+:[0-9]+"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+    
+    <xsd:simpleType name="NonNegativeInt">
+        <xsd:restriction base="xsd:nonNegativeInteger"/>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="PositiveInt">
+        <xsd:restriction base="xsd:positiveInteger"/>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="NonNegativeDecimal">
+        <xsd:restriction base="xsd:decimal">
+            <xsd:minInclusive value="0"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="NonEmptyString">
+        <xsd:restriction base="xsd:string">
+            <xsd:minLength value="1"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="TempoPattern">
+        <xsd:annotation>
+            <xsd:documentation>
+                Темпо: a-b-c, где a,b,c — неотрицательные целые секунды (эксцентрическая — пауза — концентрическая).
+                Примеры: "3-1-1", "2-0-2".
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:pattern value="[0-9]+-[0-9]+-[0-9]+"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+</xsd:schema>
