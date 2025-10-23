@@ -13,4 +13,5 @@ dependencies = [
     "langchain-openai>=1.0.1",
     "rich>=14.2.0",
     "setuptools>=80.9.0",
+    "ydb>=3.21.12",
 ]
