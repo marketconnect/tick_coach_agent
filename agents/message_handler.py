@@ -5,7 +5,7 @@ from typing import TypedDict, Annotated, List
 from operator import add
 import httpx
 from deepagents import create_deep_agent
-from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from openai import APIStatusError, APIConnectionError
 from langgraph.graph import StateGraph, END
@@ -15,6 +15,7 @@ import xmlschema
 
 
 from .prompts import RESEARCH_INSTRUCTIONS, GOAL_CLARIFIER_SUBAGENT_DESCRIPTION, GOAL_CLARIFIER_SUBAGENT
+from .utils import send_telegram_error_notification
 from .ydb_checkpointer import YDBCheckpointer
 
 log = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ model_gpt_5 = ChatOpenAI(
         "X-Title": "Roo Code",
         "User-Agent": "RooCode/1.0.0",
     },
-    http_client=http_client,
+    # DO NOT ADD http_client=http_client, it breaks the proxy
 )
 models = [model_gpt_5, model_glm_4_5]
 # DO NOT CHANGE THE ORDER AND STRUCTURE OF THESE MODELS ABOVE
@@ -123,36 +124,53 @@ def validate_form_xml(xml_str: str) -> bool:
         return False
 
 def get_last_task_xml(messages: List[AnyMessage]) -> str | None:
-    """Extract the most recent XML-looking payload from any ToolMessage (e.g., subagent `task`)."""
+    """Extract the most recent XML-looking payload from the conversation (ToolMessage or AIMessage)."""
     for msg in reversed(messages):
         try:
-            if isinstance(msg, ToolMessage):
-                content = msg.content
-                if isinstance(content, str) and content.lstrip().startswith("<"):
-                    return content
+            content = getattr(msg, "content", None)
+            if isinstance(content, str) and content.lstrip().startswith("<"):
+                return content
         except Exception:
             continue
     return None
 
+def _sanitize_messages_for_model(messages: List[AnyMessage]) -> List[AnyMessage]:
+    """Remove ToolMessage entries to avoid invalid OpenAI Chat API history."""
+    safe: List[AnyMessage] = []
+    for m in messages:
+        if isinstance(m, ToolMessage):
+            # Drop dangling tool messages from persisted history
+            continue
+        safe.append(m)
+    return safe
+
 # Graph nodes
 def agent_node(state: AgentState, agent):
-    result = agent.invoke(state)
-    # Prefer surfacing subagent (task) XML ToolMessage to the outer graph if present
+    # Sanitize any dangling tool messages from persisted history before invoking the model
+    safe_state = dict(state)
+    safe_state["messages"] = _sanitize_messages_for_model(state.get("messages", []))
+    result = agent.invoke(safe_state)
+
+    # If the inner agent produced an XML payload via a tool, surface it as an AI message (not a ToolMessage)
     msgs = result["messages"]
-    xml_tool_msg = None
+    xml_content = None
     for m in reversed(msgs):
         try:
-            if isinstance(m, ToolMessage):
-                c = m.content
-                if isinstance(c, str) and c.lstrip().startswith("<"):
-                    xml_tool_msg = m
-                    break
+            c = getattr(m, "content", None)
+            if isinstance(c, str) and c.lstrip().startswith("<"):
+                xml_content = c
+                break
         except Exception:
             continue
-    if xml_tool_msg:
-        return {"messages": [xml_tool_msg]}
-    # Fallback to the last AI message
-    return {"messages": [msgs[-1]]}
+    if xml_content is not None:
+        return {"messages": [AIMessage(content=xml_content)]}
+
+    # Fallback to the last message (prefer AIMessage if available)
+    last = msgs[-1]
+    if isinstance(last, ToolMessage):
+        # Never persist a tool role in outer state; convert to assistant text
+        return {"messages": [AIMessage(content=str(last.content))]}
+    return {"messages": [last]}
 
 def tool_node(state: AgentState):
     last_message = state["messages"][-1]
@@ -261,15 +279,18 @@ def process_user_message(client_id: str, user_prompt: str) -> dict:
                 "type": "clarifying_question",
                 "payload": e.questions
             }
-        except GraphRecursionError:
+        except GraphRecursionError as e:
              logging.error(f"Модель {model.model_name} вошла в цикл. Пробуем следующую модель.")
+             send_telegram_error_notification(client_id, model.model_name, f"GraphRecursionError: {e}")
              continue
         except APIStatusError as e:
             if 400 <= e.status_code < 600:
                 logging.error(f"Модель {model.model_name} завершилась с ошибкой HTTP {e.status_code}. Пробуем следующую модель.", exc_info=True)
+                send_telegram_error_notification(client_id, model.model_name, f"APIStatusError: {e}")
                 continue
         except (httpx.ProxyError, APIConnectionError) as e:
             logging.error(f"Сетевая ошибка/прокси для модели {model.model_name}. Пытаемся без прокси.", exc_info=True)
+            send_telegram_error_notification(client_id, model.model_name, f"{type(e).__name__}: {e}")
             try:
                 model_no_proxy = rebuild_model_without_proxy(model)
                 graph = build_graph(model_no_proxy)
@@ -303,12 +324,15 @@ def process_user_message(client_id: str, user_prompt: str) -> dict:
                 }
             except Exception as e2:
                 logging.error(f"Повтор без прокси для модели {model.model_name} завершился ошибкой.", exc_info=True)
+                send_telegram_error_notification(client_id, model.model_name, f"Retry failed: {e2}")
                 continue
         except Exception as e:
             logging.error(f"Произошла непредвиденная ошибка с моделью {model.model_name}. Пробуем следующую модель.", exc_info=True)
+            send_telegram_error_notification(client_id, model.model_name, f"Unexpected error: {e}")
             continue
         
     log.error(f"All models failed for client_id: {client_id}")
+    send_telegram_error_notification(client_id, "N/A", "All models failed.")
     return {
         "type": "error",
         "payload": "Не удалось получить ответ ни от одной из доступных моделей."

@@ -1,10 +1,8 @@
-# ЗАМЕНИТЕ весь Makefile на этот (или добавьте недостающие таргеты)
-
 ZIP := tick-coach-agent.zip
 FUNC := tick-coach-agent
 ENTRY := index.main
 RUNTIME := python312
-MEM := 256m
+MEM := 512m
 TIMEOUT := 300s
 SA := ajehjub0fqvlq9u84lup
 OPENROUTER_BASE_URL := https://openrouter.ai/api/v1
@@ -38,7 +36,7 @@ build-zip:
 	# requirements.txt без dev-группы, комментариев, заголовка и локальных пакетов
 	uv export --format requirements-txt --frozen --no-dev --no-annotate --no-header --no-hashes --no-emit-local -o requirements.txt
 	# Кладём ТОЛЬКО runtime: папку agents, index.py и requirements.txt
-	zip -9 -r $(ZIP) agents index.py requirements.txt
+	zip -9 -r $(ZIP) agents index.py requirements.txt xmls
 
 
 # === PROXY compose ===

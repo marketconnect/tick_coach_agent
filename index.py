@@ -1,5 +1,6 @@
 import json, base64, logging, sys
 from agents.message_handler import process_user_message
+from agents.utils import send_telegram_error_notification
 
 # --- BEGIN LangGraph compatibility shim (must be first) ---
 import sys, types
@@ -75,14 +76,24 @@ def main(event, context):
             "headers": {"Content-Type": "application/json; charset=utf-8"},
             "body": response_body,
         }
-    except json.JSONDecodeError:
-        logging.error(f"Failed to parse JSON from body: {body_str}")
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse JSON from body: {body_str}", exc_info=True)
+        send_telegram_error_notification(
+            client_id="unknown",
+            model_name="N/A",
+            error_message=f"JSONDecodeError: {e}\nBody: {body_str}"
+        )
         return {"statusCode": 400, "body": "Invalid JSON format."}
     except Exception as e:
         # client_id might not be defined if JSON parsing fails, so log cautiously.
         client_id_for_log = locals().get("client_id", "unknown")
         logging.error(f"Unhandled error during message processing for clientId '{client_id_for_log}'", exc_info=True)
         error_response = {"type": "error", "payload": "An internal error occurred."}
+        send_telegram_error_notification(
+            client_id=client_id_for_log,
+            model_name="N/A",
+            error_message=f"Unhandled error in index.py: {e}"
+        )
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "application/json; charset=utf-8"},
