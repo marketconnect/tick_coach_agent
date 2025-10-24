@@ -47,11 +47,11 @@ def main(event, context):
         try:
             body_str = base64.b64decode(body_str).decode("utf-8", "ignore")
         except Exception:
-            logging.warning("Failed to decode base64 body.", exc_info=True)
+            logging.error("Failed to decode base64 body.", exc_info=True)
             body_str = ""
 
     if not body_str:
-        logging.warning("Empty message body received.")
+        logging.error("Empty message body received.")
         return {"statusCode": 400, "body": "Empty message body."}
 
     try:
@@ -81,7 +81,7 @@ def main(event, context):
     except Exception as e:
         # client_id might not be defined if JSON parsing fails, so log cautiously.
         client_id_for_log = locals().get("client_id", "unknown")
-        logging.exception(f"Unhandled error during message processing for clientId '{client_id_for_log}': {e}")
+        logging.error(f"Unhandled error during message processing for clientId '{client_id_for_log}'", exc_info=True)
         error_response = {"type": "error", "payload": "An internal error occurred."}
         return {
             "statusCode": 500,

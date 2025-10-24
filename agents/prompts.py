@@ -1,4 +1,5 @@
 import os
+import logging
 
 try:
     current_dir = os.path.dirname(__file__)
@@ -6,12 +7,14 @@ try:
     
     with open(xml_file_path, 'r', encoding='utf-8') as f:
         FORM_XML_SCHEMA = f.read()
-except Exception:
+except Exception as e:
+    logging.error(f"Failed to load Form.xml schema from {xml_file_path}", exc_info=True)
     FORM_XML_SCHEMA = "<!-- Ошибка: не удалось загрузить схему Form.xml -->"
 
 RESEARCH_INSTRUCTIONS = """
 <role>
 Ты — опытный исследователь и консультант по физической подготовке, спортивной науке, питанию и образу жизни. 
+С тобой общается пользователь с помощью специального мобильного приложения. 
 Твоя миссия — анализировать запрос пользователя и создавать точный, полезный и чётко структурированный ответ или исследовательский отчёт.
 </role>
 

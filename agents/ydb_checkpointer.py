@@ -22,10 +22,8 @@ class YDBCheckpointer(BaseCheckpointSaver):
 
     def __init__(self):
         super().__init__()
-        log.warning("Initializing YDBCheckpointer...")
         endpoint = os.environ.get("YDB_ENDPOINT")
         database = os.environ.get("YDB_DATABASE")
-        log.warning(f"YDB_ENDPOINT: {endpoint}, YDB_DATABASE: {database}")
 
         if not endpoint or not database:
             log.error("YDB_ENDPOINT and YDB_DATABASE environment variables must be set.")
@@ -43,12 +41,10 @@ class YDBCheckpointer(BaseCheckpointSaver):
         )
         self.driver = ydb.Driver(driver_config)
         try:
-            log.warning("Connecting to YDB driver...")
             self.driver.wait(timeout=5, fail_fast=True)
-            log.warning("YDB driver connection successful.")
         except Exception as e:
-            log.exception("Failed to connect to YDB driver.")
-            raise RuntimeError(f"Failed to connect to YDB: {e}")
+            log.error("Failed to connect to YDB driver.", exc_info=True)
+            raise RuntimeError(f"Failed to connect to YDB: {e}") from e
             
         self.pool = ydb.SessionPool(self.driver)
 
@@ -57,7 +53,6 @@ class YDBCheckpointer(BaseCheckpointSaver):
 
     def get_tuple(self, config: Dict[str, Any]) -> Optional[CheckpointTuple]:
         client_id = config["configurable"]["thread_id"]
-        log.warning(f"Getting checkpoint tuple for client_id: {client_id}")
 
         def callee(session: ydb.Session):
             query = f"""
@@ -73,10 +68,8 @@ class YDBCheckpointer(BaseCheckpointSaver):
             )
             
             if not result_sets or not result_sets[0].rows or result_sets[0].rows[0].checkpoint is None:
-                log.warning(f"No checkpoint tuple found for client_id: {client_id}")
                 return None
             
-            log.warning(f"Checkpoint tuple found for client_id: {client_id}")
             pickled_checkpoint = result_sets[0].rows[0].checkpoint
             try:
                 saved_data = pickle.loads(pickled_checkpoint)
@@ -84,7 +77,7 @@ class YDBCheckpointer(BaseCheckpointSaver):
                 metadata = saved_data["metadata"]
 
                 if not isinstance(checkpoint, dict) or "v" not in checkpoint:
-                    log.warning(f"Loaded checkpoint for client_id {client_id} is invalid or outdated. Discarding.")
+                    log.error(f"Loaded checkpoint for client_id {client_id} is invalid or outdated. Discarding.")
                     return None
 
                 return CheckpointTuple(
@@ -94,7 +87,7 @@ class YDBCheckpointer(BaseCheckpointSaver):
                     parent_config=None,
                 )
             except Exception as e:
-                log.warning(f"Failed to load/decode checkpoint for client_id: {client_id}. Treating as new conversation. Error: {e}")
+                log.error(f"Failed to load/decode checkpoint for client_id: {client_id}. Treating as new conversation.", exc_info=True)
                 return None
 
         return self.pool.retry_operation_sync(callee)
@@ -137,7 +130,6 @@ class YDBCheckpointer(BaseCheckpointSaver):
 
     def put_tuple(self, config: Dict[str, Any], checkpoint_tuple: CheckpointTuple) -> None:
         client_id = config["configurable"]["thread_id"]
-        log.warning(f"Putting checkpoint tuple for client_id: {client_id}")
         data_to_save = {
             "checkpoint": checkpoint_tuple.checkpoint,
             "metadata": checkpoint_tuple.metadata,
@@ -178,16 +170,7 @@ class YDBCheckpointer(BaseCheckpointSaver):
         avoid NotImplementedError during execution. Extend to persist writes
         in YDB if/when required.
         """
-        try:
-            thread_id = config.get("configurable", {}).get("thread_id", "")
-            count = len(writes) if writes else 0
-            log.warning(
-                f"put_writes called for thread_id: {thread_id}, task_id: {task_id}, writes: {count} (no-op)."
-            )
-        except Exception:
-            # Be conservative: never propagate errors from no-op path
-            pass
-        return None
+        pass
 
     def delete_thread(self, thread_id: str) -> None:
         """

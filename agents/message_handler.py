@@ -47,9 +47,8 @@ research_instructions = RESEARCH_INSTRUCTIONS
 FORM_XSD_PATH = os.path.join(os.path.dirname(__file__), "..", "xmls", "Form.xml")
 try:
     form_schema = xmlschema.XMLSchema(FORM_XSD_PATH)
-    log.warning(f"Loaded XML Schema from {FORM_XSD_PATH} for validation.")
 except Exception as e:
-    log.warning(f"Failed to load XML Schema from {FORM_XSD_PATH}: {e}. XML validation disabled.")
+    log.error(f"Failed to load XML Schema from {FORM_XSD_PATH}: {e}. XML validation disabled.")
     form_schema = None
 
 # DO NOT CHANGE THE ORDER AND STRUCTURE OF THESE MODELS
@@ -120,7 +119,7 @@ def validate_form_xml(xml_str: str) -> bool:
     try:
         return form_schema.is_valid(xml_str)
     except Exception as e:
-        log.warning(f"XML validation error: {e}")
+        log.error(f"XML validation error: {e}")
         return False
 
 def get_last_task_xml(messages: List[AnyMessage]) -> str | None:
@@ -263,14 +262,14 @@ def process_user_message(client_id: str, user_prompt: str) -> dict:
                 "payload": e.questions
             }
         except GraphRecursionError:
-             logging.warning(f"Модель {model.model_name} вошла в цикл. Пробуем следующую модель.")
+             logging.error(f"Модель {model.model_name} вошла в цикл. Пробуем следующую модель.")
              continue
         except APIStatusError as e:
             if 400 <= e.status_code < 600:
-                logging.warning(f"Модель {model.model_name} завершилась с ошибкой HTTP {e.status_code}. Пробуем следующую модель. Ошибка: {e}")
+                logging.error(f"Модель {model.model_name} завершилась с ошибкой HTTP {e.status_code}. Пробуем следующую модель.", exc_info=True)
                 continue
         except (httpx.ProxyError, APIConnectionError) as e:
-            logging.warning(f"Сетевая ошибка/прокси для модели {model.model_name}: {e}. Пытаемся без прокси.")
+            logging.error(f"Сетевая ошибка/прокси для модели {model.model_name}. Пытаемся без прокси.", exc_info=True)
             try:
                 model_no_proxy = rebuild_model_without_proxy(model)
                 graph = build_graph(model_no_proxy)
@@ -303,13 +302,13 @@ def process_user_message(client_id: str, user_prompt: str) -> dict:
                     "payload": last_message.content
                 }
             except Exception as e2:
-                logging.warning(f"Повтор без прокси для модели {model.model_name} завершился ошибкой: {e2}. Пробуем следующую модель.")
+                logging.error(f"Повтор без прокси для модели {model.model_name} завершился ошибкой.", exc_info=True)
                 continue
         except Exception as e:
-            logging.exception(f"Произошла непредвиденная ошибка с моделью {model.model_name}. Пробуем следующую модель.")
+            logging.error(f"Произошла непредвиденная ошибка с моделью {model.model_name}. Пробуем следующую модель.", exc_info=True)
             continue
         
-    log.warning(f"All models failed for client_id: {client_id}")
+    log.error(f"All models failed for client_id: {client_id}")
     return {
         "type": "error",
         "payload": "Не удалось получить ответ ни от одной из доступных моделей."
